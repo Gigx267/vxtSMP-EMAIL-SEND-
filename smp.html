@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contact Us</title>
+  <title>Bulk Email Dispatcher</title>
   
   <!-- EmailJS SDK -->
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
@@ -29,61 +29,64 @@
 
     .form-container {
       width: 100%;
-      max-width: 420px;
+      max-width: 500px;
       background: rgba(30, 41, 59, 0.7);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 16px;
-      padding: 40px;
+      padding: 32px;
       box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
     }
 
     .form-header {
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
 
     .form-header h2 {
-      font-size: 1.75rem;
+      font-size: 1.5rem;
       font-weight: 600;
       letter-spacing: -0.02em;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       color: #ffffff;
     }
 
     .form-header p {
-      font-size: 0.95rem;
+      font-size: 0.88rem;
       color: #94a3b8;
     }
 
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 18px;
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
 
     .form-group label {
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: 500;
       color: #cbd5e1;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
 
-    .form-group input {
+    .form-group textarea {
       width: 100%;
+      height: 180px;
       padding: 12px 16px;
       background: rgba(15, 23, 42, 0.6);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
       color: #ffffff;
-      font-size: 0.95rem;
+      font-family: monospace;
+      font-size: 0.85rem;
       transition: all 0.2s ease;
       outline: none;
+      resize: vertical;
     }
 
-    .form-group input:focus {
+    .form-group textarea:focus {
       border-color: #6366f1;
       box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
     }
@@ -95,7 +98,7 @@
       color: #ffffff;
       border: none;
       border-radius: 8px;
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
       transition: background 0.2s ease, transform 0.1s ease;
@@ -114,60 +117,115 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+
+    .status-box {
+      margin-top: 20px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      max-height: 150px;
+      overflow-y: auto;
+      font-family: monospace;
+    }
+
+    .status-entry {
+      margin-bottom: 4px;
+    }
+    .status-success { color: #34d399; }
+    .status-error { color: #f87171; }
   </style>
 </head>
 <body>
 
   <div class="form-container">
     <div class="form-header">
-      <h2>Join Us</h2>
-      <p>Enter your details below to get started.</p>
+      <h2>Bulk Email Queue</h2>
+      <p>Enter JSON data with target email addresses below.</p>
     </div>
 
     <form id="form">
       <div class="form-group">
-        <label for="from_name">Name</label>
-        <input type="text" name="from_name" id="from_name" placeholder="Your name" required>
+        <label for="json_data">Recipients List (JSON Array)</label>
+        <textarea id="json_data" required>[
+  { "from_name": "John Doe", "reply_to": "john@example.com" },
+  { "from_name": "Jane Smith", "reply_to": "jane@example.com" }
+]</textarea>
       </div>
 
-      <div class="form-group">
-        <label for="reply_to">Email</label>
-        <input type="email" name="reply_to" id="reply_to" placeholder="your.email@example.com" required>
-      </div>
-
-      <input type="submit" id="button" class="submit-btn" value="Submit">
+      <input type="submit" id="button" class="submit-btn" value="Start Bulk Sending (7s Interval)">
     </form>
+
+    <div id="status" class="status-box">Ready...</div>
   </div>
 
   <script type="text/javascript">
     (function() {
-      // Public Key
       emailjs.init('9GUMgYOTWQIaErIXL');
     })();
 
     const btn = document.getElementById('button');
     const form = document.getElementById('form');
+    const statusBox = document.getElementById('status');
 
-    form.addEventListener('submit', function(event) {
+    function logStatus(message, type = '') {
+      const entry = document.createElement('div');
+      entry.className = `status-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      statusBox.appendChild(entry);
+      statusBox.scrollTop = statusBox.scrollHeight;
+    }
+
+    // Helper for 7-second delay
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    form.addEventListener('submit', async function(event) {
       event.preventDefault();
 
-      btn.value = 'Submitting...';
+      let recipients = [];
+      try {
+        recipients = JSON.parse(document.getElementById('json_data').value);
+        if (!Array.isArray(recipients)) throw new Error("Input must be a JSON array.");
+      } catch (err) {
+        alert("Invalid JSON format! Please fix your input.");
+        return;
+      }
+
       btn.disabled = true;
+      statusBox.innerHTML = '';
+      logStatus(`Starting queue for ${recipients.length} recipients...`);
 
       const serviceID = 'service_9b454e4';
-      const templateID = 'template_iocr2w6'; // Fixed missing quote error
+      const templateID = 'template_iocr2w6';
 
-      emailjs.sendForm(serviceID, templateID, this)
-        .then(() => {
-          btn.value = 'Submit';
-          btn.disabled = false;
-          alert('Successfully submitted!');
-          form.reset();
-        }, (err) => {
-          btn.value = 'Submit';
-          btn.disabled = false;
-          alert('Failed to submit: ' + (err.text || JSON.stringify(err)));
-        });
+      for (let i = 0; i < recipients.length; i++) {
+        const item = recipients[i];
+        btn.value = `Sending ${i + 1}/${recipients.length}...`;
+        logStatus(`Sending to: ${item.reply_to || 'Unknown recipient'}...`);
+
+        try {
+          // Send single template object using emailjs.send
+          await emailjs.send(serviceID, templateID, {
+            from_name: item.from_name || '',
+            reply_to: item.reply_to || ''
+          });
+          logStatus(`✔ Sent successfully to ${item.reply_to}`, 'status-success');
+        } catch (err) {
+          logStatus(`✖ Failed for ${item.reply_to}: ${err.text || JSON.stringify(err)}`, 'status-error');
+        }
+
+        // Apply 7 second delay before next request (except for last item)
+        if (i < recipients.length - 1) {
+          logStatus(`Waiting 7 seconds...`);
+          await delay(7000);
+        }
+      }
+
+      btn.value = 'Bulk Sending Complete';
+      btn.disabled = false;
+      logStatus('--- All tasks processed ---');
     });
   </script>
 </body>
